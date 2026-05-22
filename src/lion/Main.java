@@ -1,85 +1,103 @@
 package lion;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
-class Lion {
-    // 1. 값이 한 번 정해지면 바뀌지 않으므로 final 권장
-    private final String name;
-    private final String part;
+// [조건 1] Repository 인터페이스 정의
+interface MemberRepository {
+    void save(String name);
+    List<String> findAll();
+}
 
-    public Lion(String name, String part) {
-        this.name = name;
-        this.part = part;
-    }
-
-    public String getName() { return name; }
-
-    // 2. getPart()를 사용하여 경고를 제거함 (필터링 로직 등에서 활용)
-    public String getPart() { return part; }
+// [조건 2] 구현체 1: 메모리 저장소
+class MemoryRepository implements MemberRepository {
+    private final List<String> store = new ArrayList<>();
 
     @Override
-    public String toString() {
-        return "[" + part + "] " + name;
+    public void save(String name) {
+        store.add(name);
+    }
+
+    @Override
+    public List<String> findAll() {
+        return store;
     }
 }
 
-public class Main {
-    // 3. 리스트와 맵의 참조 주소가 바뀌지 않으므로 final 권장
-    private static final List<Lion> lionList = new ArrayList<>();
-    private static final Map<String, List<Lion>> partMap = new HashMap<>();
+// [조건 2] 구현체 2: 테스트용 가짜 저장소 (Mock)
+class MockRepository implements MemberRepository {
+    private final List<String> mockStore = new ArrayList<>();
 
-    public static void main(String[] args) {
-        System.out.println("=== 멋쟁이사자처럼 미션 04: 클린 코드 버전 ===");
-
-        registerMember("김멋사", "백엔드");
-        registerMember("이멋사", "프론트엔드");
-        registerMember("박멋사", "디자인");
-        registerMember("최멋사", "백엔드");
-        registerMember("김멋사", "백엔드"); // 중복 테스트
-
-        searchByName("이멋사");
-        filterByPart("백엔드");
-        showAllGroupedMembers();
+    public MockRepository() {
+        // 테스트용 데이터 미리 세팅
+        mockStore.add("테스트용_아기사자");
     }
 
-    public static void registerMember(String name, String part) {
-        // 중복 확인 로직
-        for (Lion lion : lionList) {
-            if (lion.getName().equals(name)) {
-                System.out.println("[경고] 이미 등록된 멤버입니다: " + name);
-                return;
-            }
+    @Override
+    public void save(String name) {
+        System.out.println("[Mock] 가짜 저장소이므로 저장하지 않습니다: " + name);
+    }
+
+    @Override
+    public List<String> findAll() {
+        return mockStore;
+    }
+}
+
+// [조건 3 & 4] Service 클래스가 인터페이스에 의존하고, 생성자로 주입받는 구조
+class MemberService {
+    private final MemberRepository memberRepository;
+
+    // 생성자 주입 (Constructor Injection)
+    public MemberService(MemberRepository memberRepository) {
+        this.memberRepository = memberRepository;
+    }
+
+    public void join(String name) {
+        memberRepository.save(name);
+        System.out.println("[회원가입] " + name + " 등록 완료!");
+    }
+
+    public void showAllMembers() {
+        System.out.println("--- 회원 명단 출력 ---");
+        for (String name : memberRepository.findAll()) {
+            System.out.println("회원: " + name);
         }
+    }
+}
 
-        Lion newLion = new Lion(name, part);
-        lionList.add(newLion);
-
-        // 4. '람다 표현식' 또는 '메서드 참조'로 간결하게 변경
-        partMap.computeIfAbsent(part, k -> new ArrayList<>()).add(newLion);
-        System.out.println("[등록] " + newLion + " 등록 완료");
+// [조건 5] AppConfig 설정 클래스에서 객체를 생성하고 조립함
+class AppConfig {
+    // 실제 운영 환경 조립 (MemoryRepository 사용)
+    public MemberService memberService() {
+        return new MemberService(new MemoryRepository());
     }
 
-    public static void searchByName(String name) {
-        System.out.println("\n[검색] '" + name + "' 검색 결과:");
-        lionList.stream()
-                .filter(lion -> lion.getName().equals(name))
-                .findFirst()
-                .ifPresentOrElse(
-                        lion -> System.out.println("-> 찾았습니다: " + lion),
-                        () -> System.out.println("-> 해당 이름의 멤버가 없습니다.")
-                );
+    // 상황에 따라 MockRepository로 갈아끼우고 싶다면 아래처럼 변경 가능
+    public MemberService mockMemberService() {
+        return new MemberService(new MockRepository());
     }
+}
 
-    public static void filterByPart(String part) {
-        System.out.println("\n[필터링] " + part + " 파트 멤버:");
-        // getPart() 메서드를 실제 로직에서 사용하여 경고 해결
-        lionList.stream()
-                .filter(lion -> lion.getPart().equals(part))
-                .forEach(lion -> System.out.println("-> " + lion.getName()));
-    }
+// [조건 6] 실행 클래스: 직접 new 하지 않고 AppConfig를 통해 객체 생성
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("=== 멋쟁이사자처럼 미션 05: IoC/DI 시스템 ===");
 
-    public static void showAllGroupedMembers() {
-        System.out.println("\n=== 파트별 전체 명단 (Map 활용) ===");
-        partMap.forEach((part, members) -> System.out.println(part + ": " + members));
+        // 1. 객체의 생성과 조립을 담당하는 설정 객체 생성
+        AppConfig appConfig = new AppConfig();
+
+        // 2. main에서 직접 new MemberService(...) 하지 않고 AppConfig를 통해 가져옴
+        MemberService memberService = appConfig.memberService();
+
+        // 3. 비즈니스 로직 실행
+        memberService.join("김멋사");
+        memberService.join("이멋사");
+        memberService.showAllMembers();
+
+        System.out.println("\n=== [테스트] 다른 구현체(Mock)로 외부에서 조립 변경 ===");
+        MemberService mockService = appConfig.mockMemberService();
+        mockService.join("박멋사");
+        mockService.showAllMembers();
     }
 }
